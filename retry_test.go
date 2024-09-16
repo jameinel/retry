@@ -413,7 +413,7 @@ func (*expBackoffSuite) TestExpBackofWithJitterAverage(c *gc.C) {
 // max values.
 func (*expBackoffSuite) TestExpBackoffBadExponent(c *gc.C) {
 	const (
-		// 1.02^100 ~= 10, causing us to go from 200ms to 2s in 100 steps
+		// a backoff of 0.8 would put us below 200ms
 		minDelay    = 200 * time.Millisecond
 		maxDelay    = 2 * time.Second
 		maxAttempts = 10
