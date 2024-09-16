@@ -4,6 +4,7 @@
 package retry_test
 
 import (
+	"math"
 	"time"
 
 	"github.com/juju/clock"
@@ -379,6 +380,9 @@ func (*expBackoffSuite) TestExpBackofWithJitterAverage(c *gc.C) {
 		nonJitterValue := noJitterBackoffFunc(0, attempt)
 		ratio := float64(jitterValue) / float64(nonJitterValue)
 		ratioSum += ratio
+		// We have > and < not >=, so we need a bit of flexibility,
+		// also float64 imprecision gives us a bit more than 1ns of
+		// inaccuracy
 		minJitter := time.Duration(0.8*float64(nonJitterValue)) - time.Millisecond
 		maxJitter := time.Duration(1.2*float64(nonJitterValue)) + time.Millisecond
 		c.Assert(jitterValue, jc.GreaterThan, minJitter,
@@ -401,4 +405,39 @@ func (*expBackoffSuite) TestExpBackofWithJitterAverage(c *gc.C) {
 		gc.Commentf("jitter reduced the average duration by %.3f, we expected it to be +/- 2%% on average", ratioAvg))
 	c.Check(ratioAvg, jc.LessThan, 1.1,
 		gc.Commentf("jitter increased the average duration by %.3f, we expected it to be +/- 2%% on average", ratioAvg))
+}
+
+// TestExpBackoffBadExponent says that we'll at least roughly conform to
+// expectations even if the user gives us a bad backoff factor.
+// We don't have a mechanism for giving an error, but at least hold to min and
+// max values.
+func (*expBackoffSuite) TestExpBackoffBadExponent(c *gc.C) {
+	const (
+		// 1.02^100 ~= 10, causing us to go from 200ms to 2s in 100 steps
+		minDelay    = 200 * time.Millisecond
+		maxDelay    = 2 * time.Second
+		maxAttempts = 10
+		backoff     = 0.8
+	)
+	jitterBackoffFunc := retry.ExpBackoff(minDelay, maxDelay, backoff, true)
+	noJitterBackoffFunc := retry.ExpBackoff(minDelay, maxDelay, backoff, false)
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		jitterValue := jitterBackoffFunc(0, attempt)
+		nonJitterValue := noJitterBackoffFunc(0, attempt)
+		c.Check(nonJitterValue, jc.GreaterThan, minDelay-1,
+			gc.Commentf("expected duration for attempt %d to be in the [%s, %s] range; got %s",
+				attempt, minDelay, maxDelay, nonJitterValue))
+		c.Check(nonJitterValue, jc.LessThan, maxDelay+1,
+			gc.Commentf("expected duration for attempt %d to be in the [%s, %s] range; got %s",
+				attempt, minDelay, maxDelay, nonJitterValue))
+		// Ensure that even with jitter we are still capped at min and max delay
+		minJitter := time.Duration(math.Max(0.8*float64(nonJitterValue), float64(minDelay))) - time.Microsecond
+		maxJitter := time.Duration(math.Min(1.2*float64(nonJitterValue), float64(maxDelay))) + time.Microsecond
+		c.Check(jitterValue, jc.GreaterThan, minJitter,
+			gc.Commentf("expected jittered duration for attempt %d to be in the [%s, %s] range; got %s",
+				attempt, minJitter, maxJitter, jitterValue))
+		c.Check(jitterValue, jc.LessThan, maxJitter,
+			gc.Commentf("expected jittered duration for attempt %d to be in the [%s, %s] range; got %s",
+				attempt, minJitter, maxJitter, jitterValue))
+	}
 }

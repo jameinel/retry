@@ -248,9 +248,9 @@ func ExpBackoff(minDelay, maxDelay time.Duration, exp float64, applyJitter bool)
 			// We want to go +/- 20%, which is a 40% swing, and
 			// Float64 returns in the range 0-1
 			newDelay = (1 + rand.Float64()*0.4 - 0.2) * newDelay
-			if newDelay < minDelayF {
-				newDelay = minDelayF
-			}
+		}
+		if newDelay < minDelayF {
+			newDelay = minDelayF
 		}
 		if newDelay > maxDelayF {
 			newDelay = maxDelayF
